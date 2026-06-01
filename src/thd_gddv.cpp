@@ -293,6 +293,8 @@ void cthd_gddv::dump_apat()
 	thd_log_info("apat dump end\n");
 }
 
+#define MAX_APCT_COUNT	128	
+
 int cthd_gddv::parse_apct(char *apct, int len) {
 	int i;
 	int offset = 0;
@@ -362,6 +364,13 @@ int cthd_gddv::parse_apct(char *apct, int len) {
 			}
 
 			uint64_t count = get_uint64(apct, &offset);
+
+			// Validate count to prevent excessive allocation or DoS
+			if (count > MAX_APCT_COUNT) {
+				thd_log_warn("APCT v2 count %llu exceeds maximum\n", (unsigned long long)count);
+				return THD_ERROR;
+			}
+
 			for (i = 0; i < int(count); i++) {
 				struct condition condition = {};
 
