@@ -39,6 +39,7 @@
 #include <memory>
 #include <mutex>
 #include <limits.h>
+#include <stdlib.h>
 #include "thd_engine.h"
 #include "thd_cdev_therm_sys_fs.h"
 #include "thd_zone_therm_sys_fs.h"
@@ -51,6 +52,22 @@
 #include "thd_platform_arm.h"
 
 static void *cthd_engine_thread(void *arg);
+
+static bool canonicalize_sysfs_path(const std::string &path,
+		std::string &canonical_path) {
+	if (path.empty())
+		return false;
+
+	char resolved_path[PATH_MAX];
+	if (realpath(path.c_str(), resolved_path) == nullptr)
+		return false;
+
+	canonical_path.assign(resolved_path);
+	if (!starts_with(canonical_path, "/sys/"))
+		return false;
+
+	return true;
+}
 
 cthd_engine::cthd_engine(std::string _uuid) :
 		current_cdev_index(0), current_zone_index(0), current_sensor_index(0), parse_thermal_zone_success(
@@ -1059,12 +1076,10 @@ void cthd_engine::check_for_rt_kernel() {
 			rt_kernel ? "PREEMPT RT" : "vanilla");
 }
 
-int cthd_engine::user_add_sensor(std::string name, std::string path) {
-	if (path.empty())
-		return THD_ERROR;
-
-	if (!starts_with(path, "/sys/")) {
-		thd_log_debug("Invalid path %s\n", path.c_str());
+int cthd_engine::user_add_sensor(std::string name, const std::string& path) {
+	std::string canonical_path;
+	if (!canonicalize_sysfs_path(path, canonical_path)) {
+		thd_log_debug("Invalid sensor path %s\n", path.c_str());
 		return THD_ERROR;
 	}
 
@@ -1072,12 +1087,12 @@ int cthd_engine::user_add_sensor(std::string name, std::string path) {
 	for (unsigned int i = 0; i < sensors.size(); ++i) {
 		if (sensors[i]->get_sensor_type() == name) {
 			cthd_sensor *sensor = sensors[i].get();
-			sensor->update_path(std::move(path));
+			sensor->update_path(std::move(canonical_path));
 			return THD_SUCCESS;
 		}
 	}
 
-	std::unique_ptr<cthd_sensor> sensor(new cthd_sensor(current_sensor_index, std::move(path), std::move(name), SENSOR_TYPE_RAW));
+	std::unique_ptr<cthd_sensor> sensor(new cthd_sensor(current_sensor_index, std::move(canonical_path), std::move(name), SENSOR_TYPE_RAW));
 	if (sensor->sensor_update() != THD_SUCCESS) {
 		return THD_ERROR;
 	}
@@ -1254,15 +1269,21 @@ int cthd_engine::user_delete_zone(const std::string& name) {
 	return THD_SUCCESS;
 }
 
-int cthd_engine::user_add_cdev(std::string cdev_name, std::string cdev_path,
+int cthd_engine::user_add_cdev(std::string cdev_name, const std::string& cdev_path,
 		int min_state, int max_state, int step) {
 	cthd_cdev *cdev;
+	std::string canonical_cdev_path;
+
+	if (!canonicalize_sysfs_path(cdev_path, canonical_cdev_path)) {
+		thd_log_debug("Invalid cdev path %s\n", cdev_path.c_str());
+		return THD_ERROR;
+	}
 
 	std::lock_guard<std::mutex> guard(thd_engine_mutex);
 	// Check if there is existing cdev with this name and path
 	cdev = search_cdev(cdev_name);
 	if (!cdev) {
-		std::unique_ptr<cthd_gen_sysfs_cdev> cdev_sysfs(new cthd_gen_sysfs_cdev(current_cdev_index, std::move(cdev_path)));
+		std::unique_ptr<cthd_gen_sysfs_cdev> cdev_sysfs(new cthd_gen_sysfs_cdev(current_cdev_index, std::move(canonical_cdev_path)));
 		if (!cdev_sysfs) {
 			return THD_ERROR;
 		}
