@@ -729,6 +729,8 @@ int cthd_engine_adaptive::thd_engine_init(bool ignore_cpuid_check,
 		}
 	}
 
+	thd_ignore_default_control = 1;
+
 	/* Read the sensors/zones */
 	res = cthd_engine::thd_engine_init(ignore_cpuid_check, adaptive);
 	if (res != THD_SUCCESS)
