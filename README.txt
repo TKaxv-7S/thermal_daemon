@@ -103,7 +103,7 @@ For build, follow the same procedure as Fedora.
 
 Releases
 
-Release 2.5.12-rc1
+Release 2.5.12
 - Platform and feature expansion: added ARM backend support, Intel platform refactoring,
 new CPU IDs including NovaLake variants, generic_os/data-vault path enhancements,
 and feature enable/disable via config.
